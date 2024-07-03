@@ -10,14 +10,15 @@ pub fn main() !void {
     const f = try std.fs.cwd().openFile(args[1], .{});
     var jr = json.reader(alloc, f.reader());
     defer jr.deinit();
-    const parsed = try json.parseFromTokenSource(tmp.Root, alloc, &jr, .{});
-    defer parsed.deinit();
     const stdout = std.io.getStdOut().writer();
-    try stdout.print("Successfully parsed {s}\n", .{options.json_path});
-    try stdout.print("schema              {s}\n", .{options.schema_path});
+    try stdout.print("\nparsing {s}\n", .{options.json_path});
+    try stdout.print("schema  {s}\n", .{options.schema_path});
+    const parsed = try json.parseFromTokenSource(generated.Root, alloc, &jr, .{});
+    defer parsed.deinit();
+    try stdout.print("success!\n", .{});
 }
 
 const std = @import("std");
 const json = std.json;
-const tmp = @import("json-schema");
+const generated = @import("json-schema");
 const options = @import("build-options");

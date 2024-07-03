@@ -7,7 +7,7 @@ pub fn build(b: *std.Build) void {
     // this cmd calls python script to generate json schema.  the result
     // becomes a zig module, 'json-schema'.
     const cmd = b.addSystemCommand(&.{ "python3", "src/json-to-zig-schema.py" });
-    if (b.args) |args| cmd.addArg(args[0]);
+    if (b.args) |args| cmd.addArgs(args);
     const schema_file = cmd.captureStdOut();
     const schema_mod = b.addModule("json-schema", .{
         .root_source_file = schema_file,

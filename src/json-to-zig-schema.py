@@ -9,7 +9,7 @@ show_help = False
 for arg in sys.argv[1:]:
   if arg.startswith('--debug-json'):
     debug_json = True
-  elif arg.startswith('--dump-tree'):
+  elif arg.startswith('--dump-schema'):
     dump_tree = True
   elif arg.startswith('--help') or arg == '-h':
     show_help = True
