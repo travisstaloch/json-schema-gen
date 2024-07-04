@@ -8,14 +8,19 @@ pub fn main() !void {
 
     if (args.len < 2) return error.MissingJsonFilePathArg;
     const f = try std.fs.cwd().openFile(args[1], .{});
+    defer f.close();
     var jr = json.reader(alloc, f.reader());
     defer jr.deinit();
     const stdout = std.io.getStdOut().writer();
-    try stdout.print("\nparsing {s}\n", .{options.json_path});
-    try stdout.print("schema  {s}\n", .{options.schema_path});
+    const stderr = std.io.getStdErr().writer();
+    try stderr.print("\nparsing     {s}\n", .{options.json_path});
+    try stderr.print("schema file {s}\n", .{options.schema_path});
     const parsed = try json.parseFromTokenSource(generated.Root, alloc, &jr, .{});
     defer parsed.deinit();
-    try stdout.print("success!\n", .{});
+    try stderr.print("success!\nprinting schema to stdout\n\n", .{});
+    const fschema = try std.fs.cwd().openFile(options.schema_path, .{});
+    var fifo = std.fifo.LinearFifo(u8, .{ .Static = std.mem.page_size }).init();
+    try fifo.pump(fschema.reader(), stdout);
 }
 
 const std = @import("std");

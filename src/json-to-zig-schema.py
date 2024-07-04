@@ -25,11 +25,12 @@ if json_path == None or show_help:
   print()
   exit(1)
 
+meta = '__meta__'
 req = 'required'
 types = 'type'
 nullable = 'nullable'
-fields = 'fields'
-default_fields = [types, req, nullable, fields]
+fields = '__fields__'
+reserved_fields = [meta, fields]
 
 # build a schema tree by visiting each node and recording
 # the types each node contains
@@ -37,14 +38,15 @@ def build_tree(tree, node):
   # set types.
   # keep a set of type names incase there are multiple.
   # convert to a string later in finish_tree().
-  if types in tree:
-    assert type(tree[types]) == set
-    tree[types].add(type(node).__name__)
+  if not meta in tree: tree[meta] = {}
+  if types in tree[meta]:
+    assert type(tree[meta][types]) == set
+    tree[meta][types].add(type(node).__name__)
   else:
-    tree[types] = set([type(node).__name__])
+    tree[meta][types] = set([type(node).__name__])
   # set
-  tree[req] = True
-  tree[nullable] = node == None
+  tree[meta][req] = True
+  tree[meta][nullable] = node == None
   if type(node) == list:
     if not fields in tree: tree[fields] = {}
     for ele in node:
@@ -52,6 +54,8 @@ def build_tree(tree, node):
   elif type(node) == dict:
     if not fields in tree: tree[fields] = {}
     for k in node.keys():
+      if k in reserved_fields:
+        raise(Exception(f'name conflict. field \'{k}\' conflicts with reserved_fields {reserved_fields}'))
       if not k in tree[fields]: tree[fields][k] = {}
       build_tree(tree[fields][k], node[k])
 
@@ -63,25 +67,24 @@ def check_tree(tree, node):
   elif type(node) == dict:
     for k in tree[fields].keys():
       if not k in node:
-        tree[fields][k][req] = False
+        tree[fields][k][meta][req] = False
     for k in node.keys():
       check_tree(tree[fields][k], node[k])
 
 
 # convert types from sets to string
 def finish_tree(tree, node):
-  ts = tree[types]
+  ts = tree[meta][types]
   if type(ts) != str:
     if len(ts) == 1:
-      tree[types] = list(ts)[0]
+      tree[meta][types] = list(ts)[0]
     elif len(ts) == 2 and 'NoneType' in ts:
       ts.remove('NoneType')
       assert len(ts) == 1
-      tree[types] = list(ts)[0]
-      tree[nullable] = True
+      tree[meta][types] = list(ts)[0]
+      tree[meta][nullable] = True
     else:
-      print("TODO support multiple types ", len(ts), list(ts))
-      assert False
+      raise(Exception(f"TODO support multiple types {list(ts)}"))
 
   if type(node) == list:
     for ele in node:
@@ -89,7 +92,7 @@ def finish_tree(tree, node):
   elif type(node) == dict:
     for k in tree[fields].keys():
       if not k in node:
-        tree[fields][k][req] = False
+        tree[fields][k][meta][req] = False
     for k in node.keys():
       finish_tree(tree[fields][k], node[k])
   
@@ -98,17 +101,17 @@ def render_tree(tree, name=None, depth=0):
   if name == None:
     print("pub const Root = {")
   
-  if not types in tree:
+  if not meta in tree or not types in tree[meta]:
     return
   
-  qmark = '?' if (nullable in tree and tree[nullable]) or (req in tree and not tree[req]) else ''
-  t = tree[types]
+  qmark = '?' if (nullable in tree[meta] and tree[meta][nullable]) or (req in tree[meta] and not tree[meta][req]) else ''
+  t = tree[meta][types]
   if t == 'list':
     print(f'{qmark}[]const ', end='')
     render_tree(tree[fields], name, depth)
   elif t == 'dict':
     print(f'{qmark}struct {{', end='')
-    keys = list(tree[fields].keys() - default_fields)
+    keys = list(tree[fields].keys())
     for key in keys:
       pad = ' ' * depth*4
       # print('//', tree[fields][key][fields].keys())
@@ -118,13 +121,13 @@ def render_tree(tree, name=None, depth=0):
         print('[]const struct {}', end='')
       else:
         render_tree(tree[fields][key], key, depth+1)
-      default_value = ' = null' if not tree[fields][key][req] else ''
+      default_value = ' = null' if not tree[fields][key][meta][req] else ''
       print(f'{default_value},', end='')
     print()
     render_tree(tree[fields], name, depth+1)
 
     if debug_json:
-      print(' ' * (depth)*4 + 'pub usingnamespace jsonhelper.JsonParse(@This());\n', end='')
+      print(' ' * (depth)*4 + 'pub const jsonParse = jsonhelper.JsonParse(@This()).jsonParse;\n', end='')
       print(' ' * (depth-1)*4 + '}', end='')
     else:
       print(' ' * (depth-1)*4 + '}', end='')
@@ -140,14 +143,14 @@ def render_tree(tree, name=None, depth=0):
     # render ?u0 when a field is always null.  std.json won't parse ?void.
     print(f'?u0', end='')
   else:
-    print(f"TODO support field type {t}")
-    assert False
+    raise(Exception(f"TODO support field type {t}"))
 
 def render(tree, node):
   print('pub const Root = ', end = '')
   render_tree(tree, js, 1)
   print(';')
-  print('const jsonhelper = @import("json-helper");')
+  if debug_json:
+    print('const jsonhelper = @import("json-helper");')
 
 
 
