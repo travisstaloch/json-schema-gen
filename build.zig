@@ -1,6 +1,6 @@
 const std = @import("std");
 
-pub fn build(b: *std.Build) void {
+pub fn build(b: *std.Build) !void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
 
@@ -67,22 +67,28 @@ pub fn build(b: *std.Build) void {
     const testopts = b.addOptions();
     tests.root_module.addOptions("build-options", testopts);
     const run_tests = b.addRunArtifact(tests);
-    const examples = [_][]const u8{ "1", "2", "3", "4" };
-    for (0..examples.len) |i| {
-        const test_gencmd = b.addSystemCommand(&.{ "python3", "src/json-to-zig-schema.py" });
-        const ex_path = b.pathJoin(&.{ "examples", b.fmt("{s}.json", .{examples[i]}) });
-        test_gencmd.addArg(ex_path);
-        run_tests.step.dependOn(&test_gencmd.step);
-        const name = b.fmt("gen_{s}", .{examples[i]});
-        tests.root_module.addImport(name, b.createModule(.{
-            .root_source_file = test_gencmd.captureStdOut(),
-            .imports = &.{.{ .name = "json-helper", .module = json_helper }},
-        }));
-        testopts.addOptionPath(b.fmt("path_{s}", .{examples[i]}), b.path(ex_path));
-        testopts.addOptionPath(b.fmt("schema_path_{s}", .{examples[i]}), b.path(ex_path));
-    }
-
     if (b.args) |args| run_tests.addArgs(args);
     const run_tests_step = b.step("test", "Run 'parse-json-with-generated'");
     run_tests_step.dependOn(&run_tests.step);
+
+    // add module and path options to tests for each .json file in examples/
+    var ex_dir = try std.fs.cwd().openDir("examples", .{ .iterate = true });
+    defer ex_dir.close();
+    var iter = ex_dir.iterate();
+    while (try iter.next()) |e| {
+        if (e.kind != .file) continue;
+        if (!std.mem.eql(u8, std.fs.path.extension(e.name), ".json")) continue;
+        const stem = std.fs.path.stem(e.name);
+        const test_gencmd = b.addSystemCommand(&.{ "python3", "src/json-to-zig-schema.py" });
+        const ex_path = b.pathJoin(&.{ "examples", e.name });
+        test_gencmd.addArg(ex_path);
+        run_tests.step.dependOn(&test_gencmd.step);
+        const gen_name = b.fmt("gen_{s}", .{stem});
+        tests.root_module.addImport(gen_name, b.createModule(.{
+            .root_source_file = test_gencmd.captureStdOut(),
+            .imports = &.{.{ .name = "json-helper", .module = json_helper }},
+        }));
+        testopts.addOptionPath(b.fmt("path_{s}", .{stem}), b.path(ex_path));
+        testopts.addOptionPath(b.fmt("schema_path_{s}", .{stem}), b.path(ex_path));
+    }
 }

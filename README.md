@@ -84,9 +84,7 @@ USAGE: $ src/json-to-zig-schema.py <json-file-path> <?options>
 
 ## Troubleshooting parse errors
 
-If your json file won't parse, you can use the --debug-json option to generate zig code which prints field names as they are parsed.  Hopefully that narrows your search for the problem json field and helps decide what edits to make to `json-schema.zig`.  
-
-Or if you find a way to improve the schema gen script to fix your parse error, patches are welcome.  Please add a reproduction of your parse error to examples/ and a test case to [src/tests.zig](src/tests.zig).  You'll need to update the [build.zig](build.zig) 'test' step too to include your new example file.
+If your json file won't parse, you can use the --debug-json option to generate zig code which prints field names as they are parsed.
 
 ```console
 $ zig build json -- examples/1.json --debug-json
@@ -97,3 +95,7 @@ key
 success!
 # ... omitted
 ```
+
+Hopefully that narrows your search for the problem json field and helps decide what edits to make to `json-schema.zig`.  
+
+Or if you find a way to improve the [schema gen script](src/json-to-zig-schema.py) to fix your parse error, patches are welcome.  Please add a reproduction of your parse error to examples/ and a test case to [src/tests.zig](src/tests.zig).  You'll need to add entries for your file to `example_mods` and `example_fmts`.
