@@ -59,21 +59,9 @@ def build_tree(tree, node):
       if not k in tree[fields]: tree[fields][k] = {}
       build_tree(tree[fields][k], node[k])
 
+# convert types from sets to string
 # set 'required' to false for fields which don't always appear
 def check_tree(tree, node):
-  if type(node) == list:
-    for ele in node:
-      check_tree(tree[fields], ele)
-  elif type(node) == dict:
-    for k in tree[fields].keys():
-      if not k in node:
-        tree[fields][k][meta][req] = False
-    for k in node.keys():
-      check_tree(tree[fields][k], node[k])
-
-
-# convert types from sets to string
-def finish_tree(tree, node):
   ts = tree[meta][types]
   if type(ts) != str:
     if len(ts) == 1:
@@ -88,19 +76,15 @@ def finish_tree(tree, node):
 
   if type(node) == list:
     for ele in node:
-      finish_tree(tree[fields], ele)
+      check_tree(tree[fields], ele)
   elif type(node) == dict:
     for k in tree[fields].keys():
       if not k in node:
         tree[fields][k][meta][req] = False
     for k in node.keys():
-      finish_tree(tree[fields][k], node[k])
-  
+      check_tree(tree[fields][k], node[k])
 
 def render_tree(tree, name=None, depth=0):
-  if name == None:
-    print("pub const Root = {")
-  
   if not meta in tree or not types in tree[meta]:
     return
   
@@ -128,9 +112,7 @@ def render_tree(tree, name=None, depth=0):
 
     if debug_json:
       print(' ' * (depth)*4 + 'pub const jsonParse = jsonhelper.JsonParse(@This()).jsonParse;\n', end='')
-      print(' ' * (depth-1)*4 + '}', end='')
-    else:
-      print(' ' * (depth-1)*4 + '}', end='')
+    print(' ' * (depth-1)*4 + '}', end='')
   elif t == 'str':
     print(f'{qmark}[]const u8', end='')
   elif t == 'int':
@@ -153,14 +135,12 @@ def render(tree, node):
     print('const jsonhelper = @import("json-helper");')
 
 
-
 # js = json.load(open(json_path)) if json_path != None else json.load(sys.stdin)
 js = json.load(open(json_path))
 
 tree = {}
 build_tree(tree, js)
 check_tree(tree, js)
-finish_tree(tree, js)
 if dump_tree:
   print(json.dumps(tree))
 else:

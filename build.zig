@@ -4,14 +4,38 @@ pub fn build(b: *std.Build) !void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
 
-    // call python script to generate zig json schema.  the result becomes a
-    // zig module, 'json-schema'.
-    const gencmd = b.addSystemCommand(&.{ "python3", "src/json-to-zig-schema.py" });
-    if (b.args) |args| gencmd.addArgs(args);
     const json_helper = b.createModule(.{
         .root_source_file = b.path("src/json-helper.zig"),
     });
-    const schema_file = gencmd.captureStdOut();
+
+    // call python script to generate zig json schema.  the result becomes a
+    // zig module, 'json-schema'.
+    // const gencmd = b.addSystemCommand(&.{ "python3", "src/json-to-zig-schema.py" });
+    // if (b.args) |args| gencmd.addArgs(args);
+    // const schema_file = gencmd.captureStdOut();
+    // const schema_mod = b.createModule(.{
+    //     .root_source_file = schema_file,
+    //     .imports = &.{.{
+    //         .name = "json-helper",
+    //         .module = json_helper,
+    //     }},
+    // });
+
+    // call zig script to generate a zig json schema.  the result becomes a
+    // zig module, 'json-schema'.
+    const gen_exe = b.addExecutable(.{
+        .name = "json-to-zig-schema",
+        .root_source_file = b.path("src/json-to-zig-schema.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    b.installArtifact(gen_exe);
+    const run_gen_exe = b.addRunArtifact(gen_exe);
+    run_gen_exe.step.dependOn(&gen_exe.step);
+    if (b.args) |args| run_gen_exe.addArgs(args);
+    const gen_step = b.step("gen", "Run 'json-to-zig-schema'");
+    gen_step.dependOn(&run_gen_exe.step);
+    const schema_file = run_gen_exe.captureStdOut();
     const schema_mod = b.createModule(.{
         .root_source_file = schema_file,
         .imports = &.{.{
@@ -44,7 +68,7 @@ pub fn build(b: *std.Build) !void {
     opts.addOptionPath("schema_path", schema_file);
     parse_json_exe.root_module.addOptions("build-options", opts);
     const run_json_cmd = b.addRunArtifact(parse_json_exe);
-    run_json_cmd.step.dependOn(&gencmd.step);
+    run_json_cmd.step.dependOn(&run_gen_exe.step);
     if (b.args) |args| run_json_cmd.addArgs(args);
     const run_json_step = b.step("json", "Run 'parse-json-with-gen-schema'");
     run_json_step.dependOn(&run_json_cmd.step);
