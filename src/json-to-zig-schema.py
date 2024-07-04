@@ -26,7 +26,7 @@ if json_path == None or show_help:
   exit(1)
 
 req = 'required'
-types = 'types'
+types = 'type'
 nullable = 'nullable'
 fields = 'fields'
 default_fields = [types, req, nullable, fields]

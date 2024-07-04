@@ -1,5 +1,5 @@
 {
-  "item_7": {
-    "item_7_6": { "key": "value" }
+  "a": {
+    "b": { "key": "value" }
   }
 }
