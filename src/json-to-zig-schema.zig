@@ -20,7 +20,7 @@ const reserved_fields = [_][]const u8{ metak, fieldsk }; // TODO StaticStringMap
 const Fields = std.StringArrayHashMapUnmanaged(Node);
 const root = @This();
 const Node = struct {
-    meta: Meta,
+    meta: Meta = .{},
     fields: Fields = .{},
 
     pub fn deinit(n: *Node, alloc: mem.Allocator) void {
@@ -103,7 +103,7 @@ fn build(node: *Node, alloc: mem.Allocator, json_node: std.json.Value) !void {
                 }
                 const child = try node.fields.getOrPut(alloc, k);
                 if (!child.found_existing) {
-                    child.value_ptr.* = .{ .meta = .{} };
+                    child.value_ptr.* = .{};
                 }
                 try child.value_ptr.build(alloc, v);
             }
@@ -187,7 +187,10 @@ fn renderImpl(node: *Node, depth: u8, writer: anytype, opts: Options) !void {
         _ = try writer.write("\n");
         if (opts.debug_json) {
             try writer.writeByteNTimes(' ', depth * 4);
-            _ = try writer.write("pub const jsonParse = jsonhelper.JsonParse(@This()).jsonParse;\n");
+            if (opts.inline_json_helper)
+                _ = try writer.write("pub const jsonParse = JsonParse(@This()).jsonParse;\n")
+            else
+                _ = try writer.write("pub const jsonParse = jsonhelper.JsonParse(@This()).jsonParse;\n");
         }
         try writer.writeByteNTimes(' ', (depth - 1) * 4);
         try writer.writeByte('}');
@@ -211,16 +214,21 @@ fn render(node: *Node, writer: anytype, opts: Options) !void {
     _ = try writer.write("pub const Root = ");
     try node.renderImpl(1, writer, opts);
     _ = try writer.write(";\n");
-    if (opts.debug_json)
-        _ = try writer.write(
-            \\const jsonhelper = @import("json-helper");
-            \\
-        );
+    if (opts.debug_json) {
+        if (opts.inline_json_helper)
+            _ = try writer.write("\n\n" ++ @embedFile("json-helper.zig"))
+        else
+            _ = try writer.write(
+                \\const jsonhelper = @import("json-helper");
+                \\
+            );
+    }
 }
 
-const Options = struct {
+pub const Options = struct {
     debug_json: bool,
-    dump_tree: bool,
+    dump_schema: bool,
+    inline_json_helper: bool,
 };
 
 pub fn main() !void {
@@ -234,11 +242,12 @@ pub fn main() !void {
     var mjson_path: ?[]const u8 = null;
     var opts: Options = .{
         .debug_json = false,
-        .dump_tree = false,
+        .dump_schema = false,
+        .inline_json_helper = false,
     };
     const E = enum {
         @"--debug-json",
-        @"--dump-tree",
+        @"--dump-schema",
         @"--help",
         @"-h",
     };
@@ -249,8 +258,8 @@ pub fn main() !void {
                 .@"--debug-json" => {
                     opts.debug_json = true;
                 },
-                .@"--dump-tree" => {
-                    opts.dump_tree = true;
+                .@"--dump-schema" => {
+                    opts.dump_schema = true;
                 },
                 .@"--help", .@"-h" => {
                     usage(args[0]);
@@ -275,20 +284,24 @@ pub fn main() !void {
 
     const f = try std.fs.cwd().openFile(json_path, .{});
     defer f.close();
-    var jr = json.reader(alloc, f.reader());
+    try parseBuildRender(alloc, f.reader(), std.io.getStdOut().writer(), opts);
+}
+
+pub fn parseBuildRender(alloc: mem.Allocator, reader: anytype, writer: anytype, opts: Options) !void {
+    var jr = json.reader(alloc, reader);
     defer jr.deinit();
 
     const parsed = try json.parseFromTokenSource(json.Value, alloc, &jr, .{});
     defer parsed.deinit();
     // try std.json.stringify(parsed.value, .{}, std.io.getStdErr().writer());
-    var node: Node = .{ .meta = .{} };
+    var node: Node = .{};
     defer node.deinit(alloc);
     try node.build(alloc, parsed.value);
     try node.check(parsed.value);
-    if (opts.dump_tree) {
-        std.debug.print("{}\n", .{node});
+    if (opts.dump_schema) {
+        try writer.print("{}\n", .{node});
     } else {
-        try node.render(std.io.getStdOut().writer(), opts);
+        try node.render(writer, opts);
     }
 }
 

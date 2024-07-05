@@ -61,7 +61,7 @@ pub fn build(b: *std.Build) !void {
         .target = target,
         .optimize = optimize,
     });
-    b.installArtifact(parse_json_exe);
+    if (b.args != null) b.installArtifact(parse_json_exe);
     parse_json_exe.root_module.addImport("json-schema", schema_mod);
     const opts = b.addOptions();
     opts.addOptionPath("json_path", std.Build.LazyPath{ .cwd_relative = if (b.args) |args| args[0] else "" });
@@ -115,4 +115,18 @@ pub fn build(b: *std.Build) !void {
         testopts.addOptionPath(b.fmt("path_{s}", .{stem}), b.path(ex_path));
         testopts.addOptionPath(b.fmt("schema_path_{s}", .{stem}), b.path(ex_path));
     }
+
+    const wasm = b.addExecutable(.{
+        .name = "lib",
+        .root_source_file = b.path("src/wasm.zig"),
+        .target = b.resolveTargetQuery(std.zig.CrossTarget.parse(
+            .{ .arch_os_abi = "wasm32-freestanding" },
+        ) catch unreachable),
+        .optimize = optimize,
+    });
+    wasm.entry = .disabled;
+    wasm.rdynamic = true;
+    wasm.import_symbols = true;
+    const i = b.addInstallBinFile(wasm.getEmittedBin(), "../../web/lib.wasm");
+    b.getInstallStep().dependOn(&i.step);
 }
