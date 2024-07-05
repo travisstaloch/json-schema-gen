@@ -2,6 +2,10 @@
 
 Generate zig code from arbitrary json data which can parse it.
 
+## Web
+
+https://travisstaloch.github.io/
+
 ## Motivation
 
 When you need to parse arbitrary json in zig, you usually pass `std.json.Value` to one of the parse() methods.  This is convenient but is generally slower and allocates more memory than passing a concrete type.
