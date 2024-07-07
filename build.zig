@@ -12,9 +12,9 @@ pub fn build(b: *std.Build) !void {
     // zig module, 'json-schema'.
     // const gencmd = b.addSystemCommand(&.{ "python3", "src/json-to-zig-schema.py" });
     // if (b.args) |args| gencmd.addArgs(args);
-    // const schema_file = gencmd.captureStdOut();
+    // const schema_path = gencmd.captureStdOut();
     // const schema_mod = b.createModule(.{
-    //     .root_source_file = schema_file,
+    //     .root_source_file = schema_path,
     //     .imports = &.{.{
     //         .name = "json-helper",
     //         .module = json_helper,
@@ -30,14 +30,14 @@ pub fn build(b: *std.Build) !void {
         .optimize = optimize,
     });
     b.installArtifact(gen_exe);
-    const run_gen_exe = b.addRunArtifact(gen_exe);
-    run_gen_exe.step.dependOn(&gen_exe.step);
-    if (b.args) |args| run_gen_exe.addArgs(args);
+    const gen_exe_run = b.addRunArtifact(gen_exe);
+    gen_exe_run.step.dependOn(&gen_exe.step);
+    if (b.args) |args| gen_exe_run.addArgs(args);
     const gen_step = b.step("gen", "Run 'json-to-zig-schema'");
-    gen_step.dependOn(&run_gen_exe.step);
-    const schema_file = run_gen_exe.captureStdOut();
+    gen_step.dependOn(&gen_exe_run.step);
+    const schema_path = gen_exe_run.captureStdOut();
     const schema_mod = b.createModule(.{
-        .root_source_file = schema_file,
+        .root_source_file = schema_path,
         .imports = &.{.{
             .name = "json-helper",
             .module = json_helper,
@@ -65,13 +65,13 @@ pub fn build(b: *std.Build) !void {
     parse_json_exe.root_module.addImport("json-schema", schema_mod);
     const opts = b.addOptions();
     opts.addOptionPath("json_path", std.Build.LazyPath{ .cwd_relative = if (b.args) |args| args[0] else "" });
-    opts.addOptionPath("schema_path", schema_file);
+    opts.addOptionPath("schema_path", schema_path);
     parse_json_exe.root_module.addOptions("build-options", opts);
-    const run_json_cmd = b.addRunArtifact(parse_json_exe);
-    run_json_cmd.step.dependOn(&run_gen_exe.step);
-    if (b.args) |args| run_json_cmd.addArgs(args);
+    const json_cmd_run = b.addRunArtifact(parse_json_exe);
+    json_cmd_run.step.dependOn(&gen_exe_run.step);
+    if (b.args) |args| json_cmd_run.addArgs(args);
     const run_json_step = b.step("json", "Run 'parse-json-with-gen-schema'");
-    run_json_step.dependOn(&run_json_cmd.step);
+    run_json_step.dependOn(&json_cmd_run.step);
 
     // for zls - check if main compiles
     const exe_check = b.addExecutable(.{
@@ -103,17 +103,19 @@ pub fn build(b: *std.Build) !void {
         if (e.kind != .file) continue;
         if (!std.mem.eql(u8, std.fs.path.extension(e.name), ".json")) continue;
         const stem = std.fs.path.stem(e.name);
-        const test_gencmd = b.addSystemCommand(&.{ "python3", "src/json-to-zig-schema.py" });
+        const test_gen_exe_run = b.addRunArtifact(gen_exe);
+        test_gen_exe_run.step.dependOn(&gen_exe.step);
         const ex_path = b.pathJoin(&.{ "examples", e.name });
-        test_gencmd.addArg(ex_path);
-        run_tests.step.dependOn(&test_gencmd.step);
+        test_gen_exe_run.addArg(ex_path);
+        run_tests.step.dependOn(&test_gen_exe_run.step);
         const gen_name = b.fmt("gen_{s}", .{stem});
+        const test_schema_path = test_gen_exe_run.captureStdOut();
         tests.root_module.addImport(gen_name, b.createModule(.{
-            .root_source_file = test_gencmd.captureStdOut(),
+            .root_source_file = test_schema_path,
             .imports = &.{.{ .name = "json-helper", .module = json_helper }},
         }));
         testopts.addOptionPath(b.fmt("path_{s}", .{stem}), b.path(ex_path));
-        testopts.addOptionPath(b.fmt("schema_path_{s}", .{stem}), b.path(ex_path));
+        testopts.addOptionPath(b.fmt("schema_path_{s}", .{stem}), test_schema_path);
     }
 
     const wasm = b.addExecutable(.{

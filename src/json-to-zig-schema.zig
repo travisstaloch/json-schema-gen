@@ -19,8 +19,10 @@ const reserved_fields = [_][]const u8{ metak, fieldsk }; // TODO StaticStringMap
 
 const Fields = std.StringArrayHashMapUnmanaged(Node);
 const root = @This();
+
 const Node = struct {
     meta: Meta = .{},
+    max_field_count: usize = 0,
     fields: Fields = .{},
 
     pub fn deinit(n: *Node, alloc: mem.Allocator) void {
@@ -34,8 +36,8 @@ const Node = struct {
     pub const render = root.render;
 
     pub fn format(n: Node, comptime fmt: []const u8, options: std.fmt.FormatOptions, writer: anytype) !void {
-        _ = fmt; // autofix
-        _ = options; // autofix
+        _ = fmt;
+        _ = options;
         try json.stringify(n, .{ .whitespace = .indent_2 }, writer);
     }
 
@@ -93,6 +95,7 @@ fn build(node: *Node, alloc: mem.Allocator, json_node: std.json.Value) !void {
             }
         },
         .object => |o| {
+            node.max_field_count = @max(node.max_field_count, o.count());
             for (o.keys(), o.values()) |k, v| {
                 const found = for (reserved_fields) |rf| {
                     if (mem.eql(u8, k, rf)) break true;
@@ -112,26 +115,18 @@ fn build(node: *Node, alloc: mem.Allocator, json_node: std.json.Value) !void {
     }
 }
 
-/// validate type field and set 'required' to false for fields which don't
-/// always appear
+/// recursively visit all json nodes and validate type field.  set 'required'
+/// to false for fields which don't always appear.
 pub fn check(node: *Node, json_node: json.Value) !void {
     switch (node.meta.type.count()) {
         1 => {},
         2 => {
-            if (node.meta.type.contains(.array)) {
-                //
-            } else if (node.meta.type.contains(.null)) {
+            if (node.meta.type.contains(.null)) {
                 node.meta.type.remove(.null);
                 node.meta.nullable = true;
-            } else {
-                typeError(node.meta.type);
-                return error.TypeError;
             }
         },
-        else => {
-            typeError(node.meta.type);
-            return error.TypeError;
-        },
+        else => {},
     }
 
     switch (json_node) {
@@ -150,38 +145,51 @@ pub fn check(node: *Node, json_node: json.Value) !void {
     }
 }
 
-fn typeError(t: Type) void {
-    std.log.err("Expected one or two types. found {}", .{t.count()});
+fn typeError(t: Type, comptime fmt: []const u8, args: anytype) void {
+    std.log.err(fmt, args);
     var iter = t.iterator();
-    while (iter.next()) |tag| {
-        std.log.err("{s}", .{@tagName(tag)});
+    var i: u8 = 0;
+    while (iter.next()) |tag| : (i += 1) {
+        std.log.err("  type {}: {s}", .{ i, @tagName(tag) });
     }
 }
 
-fn renderImpl(node: *Node, depth: u8, writer: anytype, opts: Options) !void {
-    const qmark: []const u8 = if (node.meta.nullable or !node.meta.required) "?" else "";
-
+fn renderImpl(
+    node: *Node,
+    depth: u8,
+    writer: anytype,
+    opts: Options,
+    parent_is_union: bool,
+) !void {
+    const is_union = node.max_field_count == 1 and node.fields.count() > 1;
+    const qmark: []const u8 = if (!parent_is_union and
+        (node.meta.nullable or !node.meta.required))
+        "?"
+    else
+        "";
     if (node.meta.type.contains(.array) and !node.meta.type.contains(.object)) {
         try writer.print("{s}[]const ", .{qmark});
         node.meta.type.remove(.array);
         node.meta.nullable = false;
-        try node.renderImpl(depth, writer, opts);
+        try node.renderImpl(depth, writer, opts, parent_is_union);
     } else if (node.meta.type.contains(.object)) {
-        if (node.meta.type.contains(.array)) {
-            try writer.print("{s}[]const struct {{", .{qmark});
-        } else {
-            try writer.print("{s}struct {{", .{qmark});
-        }
+        _ = try writer.write(qmark);
+        if (node.meta.type.contains(.array))
+            _ = try writer.write("[]const ");
+        if (is_union)
+            _ = try writer.write("union(enum) {")
+        else
+            _ = try writer.write("struct {");
+
         for (node.fields.keys(), node.fields.values()) |k, *v| {
             try writer.print("\n{s: >[1]}{2s}: ", .{ " ", depth * 4, k });
             if (v.meta.type.count() == 0)
                 _ = try writer.write("[]const struct{}")
             else
-                try v.renderImpl(depth + 1, writer, opts);
+                try v.renderImpl(depth + 1, writer, opts, is_union);
 
-            if (!v.meta.required) {
+            if (!v.meta.required and !is_union)
                 _ = try writer.write(" = null");
-            }
             _ = try writer.write(",");
         }
         _ = try writer.write("\n");
@@ -194,41 +202,49 @@ fn renderImpl(node: *Node, depth: u8, writer: anytype, opts: Options) !void {
         }
         try writer.writeByteNTimes(' ', (depth - 1) * 4);
         try writer.writeByte('}');
-    } else if (node.meta.type.contains(.string)) {
-        try writer.print("{s}[]const u8", .{qmark});
-    } else if (node.meta.type.contains(.integer)) {
-        try writer.print("{s}i64", .{qmark});
-    } else if (node.meta.type.contains(.float)) {
-        try writer.print("{s}f64", .{qmark});
-    } else if (node.meta.type.contains(.bool)) {
-        try writer.print("{s}bool", .{qmark});
-    } else if (node.meta.type.count() == 0 or node.meta.type.contains(.null)) {
+    } else if (node.meta.type.count() == 0) {
         _ = try writer.write("?u0");
+    } else if (node.meta.type.count() == 1) {
+        if (node.meta.type.contains(.string)) {
+            try writer.print("{s}[]const u8", .{qmark});
+        } else if (node.meta.type.contains(.integer)) {
+            try writer.print("{s}i64", .{qmark});
+        } else if (node.meta.type.contains(.float)) {
+            try writer.print("{s}f64", .{qmark});
+        } else if (node.meta.type.contains(.bool)) {
+            try writer.print("{s}bool", .{qmark});
+        } else if (node.meta.type.contains(.null)) {
+            _ = try writer.write("?u0");
+        }
     } else {
-        typeError(node.meta.type);
-        return error.TypeError;
+        // TODO maybe validate types here somehow?
+        try writer.print("{s}std.json.Value", .{qmark});
     }
 }
 
 fn render(node: *Node, writer: anytype, opts: Options) !void {
-    _ = try writer.write("pub const Root = ");
-    try node.renderImpl(1, writer, opts);
+    _ = try writer.write(
+        \\const std = @import("std");
+        \\pub const Root = 
+    );
+    try node.renderImpl(1, writer, opts, false);
     _ = try writer.write(";\n");
     if (opts.debug_json) {
-        if (opts.inline_json_helper)
-            _ = try writer.write("\n\n" ++ @embedFile("json-helper.zig"))
-        else
-            _ = try writer.write(
-                \\const jsonhelper = @import("json-helper");
-                \\
-            );
+        if (opts.inline_json_helper) {
+            const s: []const u8 = @embedFile("json-helper.zig");
+            const end = comptime mem.lastIndexOf(u8, s, "const std") orelse unreachable;
+            _ = try writer.write("\n\n" ++ s[0..end]);
+        } else _ = try writer.write(
+            \\const jsonhelper = @import("json-helper");
+            \\
+        );
     }
 }
 
 pub const Options = struct {
     debug_json: bool,
-    dump_schema: bool,
     inline_json_helper: bool,
+    dump_schema: bool,
 };
 
 pub fn main() !void {
