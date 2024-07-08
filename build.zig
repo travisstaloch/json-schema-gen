@@ -4,22 +4,12 @@ pub fn build(b: *std.Build) !void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
 
-    const json_helper = b.createModule(.{
-        .root_source_file = b.path("src/json-helper.zig"),
-    });
-
     // call python script to generate zig json schema.  the result becomes a
     // zig module, 'json-schema'.
     // const gencmd = b.addSystemCommand(&.{ "python3", "src/json-to-zig-schema.py" });
     // if (b.args) |args| gencmd.addArgs(args);
     // const schema_path = gencmd.captureStdOut();
-    // const schema_mod = b.createModule(.{
-    //     .root_source_file = schema_path,
-    //     .imports = &.{.{
-    //         .name = "json-helper",
-    //         .module = json_helper,
-    //     }},
-    // });
+    // const schema_mod = b.createModule(.{ .root_source_file = schema_path });
 
     // call zig script to generate a zig json schema.  the result becomes a
     // zig module, 'json-schema'.
@@ -36,13 +26,7 @@ pub fn build(b: *std.Build) !void {
     const gen_step = b.step("gen", "Run 'json-to-zig-schema'");
     gen_step.dependOn(&gen_exe_run.step);
     const schema_path = gen_exe_run.captureStdOut();
-    const schema_mod = b.createModule(.{
-        .root_source_file = schema_path,
-        .imports = &.{.{
-            .name = "json-helper",
-            .module = json_helper,
-        }},
-    });
+    const schema_mod = b.createModule(.{ .root_source_file = schema_path });
 
     // this exe verifies the generated schema by parsing the json file used to
     // generate it.  on success it prints out the input json file path and
@@ -112,7 +96,6 @@ pub fn build(b: *std.Build) !void {
         const test_schema_path = test_gen_exe_run.captureStdOut();
         tests.root_module.addImport(gen_name, b.createModule(.{
             .root_source_file = test_schema_path,
-            .imports = &.{.{ .name = "json-helper", .module = json_helper }},
         }));
         testopts.addOptionPath(b.fmt("path_{s}", .{stem}), b.path(ex_path));
         testopts.addOptionPath(b.fmt("schema_path_{s}", .{stem}), test_schema_path);

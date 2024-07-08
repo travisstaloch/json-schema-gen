@@ -44,7 +44,6 @@ pub export fn parseBuildRender(
     // log.info("input\nstart {s}\nend {s}", .{ input[0..len], input[start..input_len] });
     const opts = Options{
         .debug_json = debug_json,
-        .inline_json_helper = debug_json,
         .dump_schema = dump_schema,
         .include_test = include_test,
     };

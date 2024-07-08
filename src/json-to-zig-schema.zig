@@ -1,8 +1,6 @@
 pub const Options = struct {
     /// add a jsonParse() method to each object which prints field names
     debug_json: bool,
-    /// inline JsonParse(T) in output instead of instead of @import()ing it
-    inline_json_helper: bool,
     /// print schema json instead of generating zig code
     dump_schema: bool,
     /// add test skeleton to output
@@ -209,10 +207,7 @@ fn renderImpl(
         _ = try writer.write("\n");
         if (opts.debug_json) {
             try writer.writeByteNTimes(' ', depth * 4);
-            if (opts.inline_json_helper)
-                _ = try writer.write("pub const jsonParse = JsonParse(@This()).jsonParse;\n")
-            else
-                _ = try writer.write("pub const jsonParse = jsonhelper.JsonParse(@This()).jsonParse;\n");
+            _ = try writer.write("pub const jsonParse = JsonParse(@This()).jsonParse;\n");
         }
         try writer.writeByteNTimes(' ', (depth - 1) * 4);
         try writer.writeByte('}');
@@ -272,14 +267,9 @@ fn render(node: *Node, writer: anytype, opts: Options) !void {
     }
 
     if (opts.debug_json) {
-        if (opts.inline_json_helper) {
-            const s: []const u8 = @embedFile("json-helper.zig");
-            const end = comptime mem.lastIndexOf(u8, s, "const std") orelse unreachable;
-            _ = try writer.write("\n\n" ++ s[0..end]);
-        } else _ = try writer.write(
-            \\const jsonhelper = @import("json-helper");
-            \\
-        );
+        const s: []const u8 = @embedFile("json-helper.zig");
+        const end = comptime mem.lastIndexOf(u8, s, "const std") orelse unreachable;
+        _ = try writer.write("\n\n" ++ s[0..end]);
     }
 }
 
@@ -295,7 +285,6 @@ pub fn main() !void {
     var opts: Options = .{
         .debug_json = false,
         .dump_schema = false,
-        .inline_json_helper = false,
         .include_test = false,
     };
     const E = enum {

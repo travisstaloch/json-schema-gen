@@ -8,11 +8,8 @@ pub fn JsonParse(comptime Self: type) type {
             const structInfo = @typeInfo(Self).Struct;
             if (.object_begin != try source.next()) return error.UnexpectedToken;
 
-            var r: Self = undefined;
-            _ = &r; // autofix
+            var self: Self = undefined;
             var fields_seen = [_]bool{false} ** structInfo.fields.len;
-            _ = &fields_seen; // autofix
-
             while (true) {
                 var name_token: ?std.json.Token = try source.nextAllocMax(allocator, .alloc_if_needed, options.max_value_len.?);
                 const field_name = switch (name_token.?) {
@@ -45,7 +42,7 @@ pub fn JsonParse(comptime Self: type) type {
                                 .use_last => {},
                             }
                         }
-                        @field(r, field.name) = try std.json.innerParse(field.type, allocator, source, options);
+                        @field(self, field.name) = try std.json.innerParse(field.type, allocator, source, options);
                         fields_seen[i] = true;
                         break;
                     }
@@ -60,7 +57,7 @@ pub fn JsonParse(comptime Self: type) type {
                 }
             }
 
-            return r;
+            return self;
         }
     };
 }
@@ -74,4 +71,7 @@ fn freeAllocated(allocator: std.mem.Allocator, token: std.json.Token) void {
     }
 }
 
+// ***
+// WARNING - do not edit after this line, it will be removed from output
+// ***
 const std = @import("std");
