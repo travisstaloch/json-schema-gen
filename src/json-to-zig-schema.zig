@@ -22,6 +22,8 @@ const root = @This();
 
 const Node = struct {
     meta: Meta = .{},
+    /// max number of fields seen in any object.  if this is 1, the object type
+    /// may be 'union' instead of 'struct'
     max_field_count: usize = 0,
     fields: Fields = .{},
 
@@ -167,10 +169,10 @@ fn renderImpl(
         "?"
     else
         "";
+
     if (node.meta.type.contains(.array) and !node.meta.type.contains(.object)) {
-        try writer.print("{s}[]const ", .{qmark});
+        _ = try writer.write("[]const ");
         node.meta.type.remove(.array);
-        node.meta.nullable = false;
         try node.renderImpl(depth, writer, opts, parent_is_union);
     } else if (node.meta.type.contains(.object)) {
         _ = try writer.write(qmark);
@@ -217,8 +219,14 @@ fn renderImpl(
             _ = try writer.write("?u0");
         }
     } else {
-        // TODO maybe validate types here somehow?
-        try writer.print("{s}std.json.Value", .{qmark});
+        // TODO avoid using std.json.Value for more types when possible
+        if (node.meta.type.contains(.null) and node.meta.type.count() == 2) {
+            node.meta.nullable = true;
+            node.meta.type.remove(.null);
+            try renderImpl(node, depth, writer, opts, parent_is_union);
+        } else {
+            try writer.print("{s}std.json.Value", .{qmark});
+        }
     }
 }
 

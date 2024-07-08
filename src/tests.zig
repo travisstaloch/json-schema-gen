@@ -7,6 +7,8 @@ const example_mods = [_]type{
     @import("gen_4"),
     @import("gen_5"),
     @import("gen_6"),
+    @import("gen_7"),
+    @import("gen_8"),
 };
 
 const example_fmts = [_]struct { []const u8, Whitespace }{
@@ -56,13 +58,23 @@ const example_fmts = [_]struct { []const u8, Whitespace }{
         ,
         .minified,
     },
-    .{ // these turn into std.json.Value
+    .{ // these become std.json.Value
         \\[1,"a"]
         ,
         .minified,
     },
     .{
         \\[{"a":1},{"b":"c"}]
+        ,
+        .minified,
+    },
+    .{
+        \\[{},{"a":1}]
+        ,
+        .minified,
+    },
+    .{
+        \\[1,null]
         ,
         .minified,
     },
@@ -112,6 +124,8 @@ test "parse examples" {
     try parseExample(4);
     try parseExample(5);
     try parseExample(6);
+    try parseExample(7);
+    try parseExample(8);
 }
 
 test "unions" {
@@ -125,6 +139,32 @@ test "unions" {
         \\    a: i64,
         \\    b: []const u8,
         \\};
+        \\
+    , s);
+}
+
+test "optional instead of union with null" {
+    const f = try std.fs.cwd().openFile(build_options.schema_path_7, .{});
+    defer f.close();
+    const s = try f.readToEndAlloc(talloc, 1024);
+    defer talloc.free(s);
+    try testing.expectEqualStrings(
+        \\const std = @import("std");
+        \\pub const Root = []const struct {
+        \\    a: ?i64,
+        \\};
+        \\
+    , s);
+}
+
+test "optional 2" {
+    const f = try std.fs.cwd().openFile(build_options.schema_path_8, .{});
+    defer f.close();
+    const s = try f.readToEndAlloc(talloc, 1024);
+    defer talloc.free(s);
+    try testing.expectEqualStrings(
+        \\const std = @import("std");
+        \\pub const Root = []const ?i64;
         \\
     , s);
 }
