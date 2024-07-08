@@ -1,10 +1,22 @@
+pub const Options = struct {
+    /// add a jsonParse() method to each object which prints field names
+    debug_json: bool,
+    /// inline JsonParse(T) in output instead of instead of @import()ing it
+    inline_json_helper: bool,
+    /// print schema json instead of generating zig code
+    dump_schema: bool,
+    /// add test skeleton to output
+    include_test: bool,
+};
+
 fn usage(exe_path: []const u8) void {
     std.debug.print(
         \\
         \\USAGE: $ {s} <json-file-path> <?options>
         \\  options:
-        \\    --debug-json  - add a jsonParse() method to each object which prints field names.
-        \\    --dump-schema - print schema json instead of generating zig code.
+        \\    --debug-json   - add a jsonParse() method to each object which prints field names.
+        \\    --dump-schema  - print schema json instead of generating zig code.
+        \\    --include-test - add a test skeleton to ouptut.
         \\
         \\
     , .{std.fs.path.basename(exe_path)});
@@ -232,11 +244,33 @@ fn renderImpl(
 
 fn render(node: *Node, writer: anytype, opts: Options) !void {
     _ = try writer.write(
-        \\const std = @import("std");
         \\pub const Root = 
     );
     try node.renderImpl(1, writer, opts, false);
-    _ = try writer.write(";\n");
+    _ = try writer.write(
+        \\;
+        \\
+        \\const std = @import("std");
+        \\
+    );
+
+    if (opts.include_test) {
+        _ = try writer.write(
+            \\
+            \\test {
+            \\    const allocator = std.testing.allocator;
+            \\    const json_text = "<json_document_here>";
+            \\    const parsed = try std.json.parseFromSlice(Root, allocator, json_text, .{});
+            \\    defer parsed.deinit();
+            \\    var l = std.ArrayList(u8).init(allocator);
+            \\    defer l.deinit();
+            \\    try std.json.stringify(parsed.value, .{}, l.writer());
+            \\    try std.testing.expectEqualStrings("<expected_json_document_here>", l.items);
+            \\}
+            \\
+        );
+    }
+
     if (opts.debug_json) {
         if (opts.inline_json_helper) {
             const s: []const u8 = @embedFile("json-helper.zig");
@@ -248,12 +282,6 @@ fn render(node: *Node, writer: anytype, opts: Options) !void {
         );
     }
 }
-
-pub const Options = struct {
-    debug_json: bool,
-    inline_json_helper: bool,
-    dump_schema: bool,
-};
 
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
@@ -268,10 +296,12 @@ pub fn main() !void {
         .debug_json = false,
         .dump_schema = false,
         .inline_json_helper = false,
+        .include_test = false,
     };
     const E = enum {
         @"--debug-json",
         @"--dump-schema",
+        @"--include-test",
         @"--help",
         @"-h",
     };
@@ -284,6 +314,9 @@ pub fn main() !void {
                 },
                 .@"--dump-schema" => {
                     opts.dump_schema = true;
+                },
+                .@"--include-test" => {
+                    opts.include_test = true;
                 },
                 .@"--help", .@"-h" => {
                     usage(args[0]);

@@ -134,11 +134,12 @@ test "unions" {
     const s = try f.readToEndAlloc(talloc, 1024);
     defer talloc.free(s);
     try testing.expectEqualStrings(
-        \\const std = @import("std");
         \\pub const Root = []const union(enum) {
         \\    a: i64,
         \\    b: []const u8,
         \\};
+        \\
+        \\const std = @import("std");
         \\
     , s);
 }
@@ -149,10 +150,11 @@ test "optional instead of union with null" {
     const s = try f.readToEndAlloc(talloc, 1024);
     defer talloc.free(s);
     try testing.expectEqualStrings(
-        \\const std = @import("std");
         \\pub const Root = []const struct {
         \\    a: ?i64,
         \\};
+        \\
+        \\const std = @import("std");
         \\
     , s);
 }
@@ -163,8 +165,9 @@ test "optional 2" {
     const s = try f.readToEndAlloc(talloc, 1024);
     defer talloc.free(s);
     try testing.expectEqualStrings(
-        \\const std = @import("std");
         \\pub const Root = []const ?i64;
+        \\
+        \\const std = @import("std");
         \\
     , s);
 }

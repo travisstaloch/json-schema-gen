@@ -35,16 +35,18 @@ pub export fn parseBuildRender(
     input: [*:0]const u8,
     input_len: usize,
     debug_json: bool,
-    dump_tree: bool,
+    dump_schema: bool,
+    include_test: bool,
 ) ?[*:0]u8 {
-    log.info("pbr() input len {} debug_json {} dump_tree {}", .{ input_len, debug_json, dump_tree });
+    log.info("pbr() input len {} debug_json {} dump_schema {} include_test {}", .{ input_len, debug_json, dump_schema, include_test });
     // const len = @min(20, input_len);
     // const start = input_len -| 20;
     // log.info("input\nstart {s}\nend {s}", .{ input[0..len], input[start..input_len] });
     const opts = Options{
         .debug_json = debug_json,
         .inline_json_helper = debug_json,
-        .dump_schema = dump_tree,
+        .dump_schema = dump_schema,
+        .include_test = include_test,
     };
     var fbsin = std.io.fixedBufferStream(input[0..input_len]);
     var l = std.ArrayList(u8).init(std.heap.wasm_allocator);
@@ -55,7 +57,7 @@ pub export fn parseBuildRender(
         l.writer(),
         opts,
     ) catch |e| {
-        log.err("parsing error: {s}", .{@errorName(e)});
+        log.err("conversion error: {s}", .{@errorName(e)});
         return null;
     };
     const slice = l.toOwnedSliceSentinel(0) catch return null;
