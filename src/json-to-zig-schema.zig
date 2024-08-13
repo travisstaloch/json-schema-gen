@@ -3,6 +3,8 @@ pub const Options = struct {
     debug_json: bool,
     /// print schema json instead of generating zig code
     dump_schema: bool,
+    /// treat input as schema json file and skip build phase
+    input_schema: bool,
     /// add test skeleton to output
     include_test: bool,
 };
@@ -14,6 +16,7 @@ fn usage(exe_path: []const u8) void {
         \\  options:
         \\    --debug-json   - add a jsonParse() method to each object which prints field names.
         \\    --dump-schema  - print schema json instead of generating zig code.
+        \\    --input-schema - treat input as schema json file and skip build phase.
         \\    --include-test - add a test skeleton to ouptut.
         \\
         \\
@@ -84,6 +87,29 @@ const Node = struct {
 
         try jw.endObject();
     }
+
+    pub fn jsonParse(alloc: mem.Allocator, source: anytype, options: std.json.ParseOptions) !Node {
+        // const s: *std.json.Reader(4096, std.io.FixedBufferStream([]u8).Reader) = undefined;
+
+        var node: Node = .{};
+        if (.object_begin != try source.next()) return error.UnexpectedToken;
+
+        while (true) {
+            switch (try source.next()) {
+                .string, .allocated_string => |key| if (std.mem.eql(u8, metak, key)) {
+                    node.meta = try std.json.innerParse(Meta, alloc, source, options);
+                } else {
+                    const subnode = try std.json.innerParse(Node, alloc, source, options);
+                    try node.fields.put(alloc, key, subnode);
+                },
+                .object_end => break,
+                else => {
+                    return error.UnexpectedToken;
+                },
+            }
+        }
+        return node;
+    }
 };
 
 const Type = std.enums.EnumSet(std.meta.Tag(json.Value));
@@ -91,6 +117,47 @@ const Meta = struct {
     type: Type = .{},
     required: bool = true,
     nullable: bool = false,
+
+    pub fn jsonParse(alloc: mem.Allocator, source: anytype, options: std.json.ParseOptions) !Meta {
+        // const s: *std.json.Reader(4096, std.io.FixedBufferStream([]u8).Reader) = undefined;
+
+        var meta: Meta = .{};
+        meta = meta;
+        if (.object_begin != try source.next()) return error.UnexpectedToken;
+
+        while (true) {
+            switch (try source.next()) {
+                .string, .allocated_string => |key| if (std.mem.eql(u8, typesk, key)) {
+                    if (.array_begin != try source.next()) return error.UnexpectedToken;
+                    while (true) {
+                        switch (try source.next()) {
+                            .array_end => break,
+                            .string, .allocated_string => |ty| {
+                                if (std.meta.stringToEnum(std.meta.Tag(json.Value), ty)) |t| {
+                                    meta.type.insert(t);
+                                } else {
+                                    return error.UnexpectedToken;
+                                }
+                            },
+                            else => return error.UnexpectedToken,
+                        }
+                    }
+                } else if (std.mem.eql(u8, key, reqk)) {
+                    meta.required = try std.json.innerParse(bool, alloc, source, options);
+                } else if (std.mem.eql(u8, key, nullablek)) {
+                    meta.nullable = try std.json.innerParse(bool, alloc, source, options);
+                } else {
+                    return error.UnexpectedToken;
+                },
+                .object_end => break,
+                else => {
+                    return error.UnexpectedToken;
+                },
+            }
+        }
+
+        return meta;
+    }
 };
 
 /// build a schema tree by visiting each node and recording
@@ -285,12 +352,14 @@ pub fn main() !void {
     var opts: Options = .{
         .debug_json = false,
         .dump_schema = false,
+        .input_schema = false,
         .include_test = false,
     };
     const E = enum {
         @"--debug-json",
         @"--dump-schema",
         @"--include-test",
+        @"--input-schema",
         @"--help",
         @"-h",
     };
@@ -303,6 +372,9 @@ pub fn main() !void {
                 },
                 .@"--dump-schema" => {
                     opts.dump_schema = true;
+                },
+                .@"--input-schema" => {
+                    opts.input_schema = true;
                 },
                 .@"--include-test" => {
                     opts.include_test = true;
@@ -336,18 +408,31 @@ pub fn main() !void {
 pub fn parseBuildRender(alloc: mem.Allocator, reader: anytype, writer: anytype, opts: Options) !void {
     var jr = json.reader(alloc, reader);
     defer jr.deinit();
-
-    const parsed = try json.parseFromTokenSource(json.Value, alloc, &jr, .{});
-    defer parsed.deinit();
-    // try std.json.stringify(parsed.value, .{}, std.io.getStdErr().writer());
-    var node: Node = .{};
-    defer node.deinit(alloc);
-    try node.build(alloc, parsed.value);
-    try node.check(parsed.value);
-    if (opts.dump_schema) {
-        try writer.print("{}\n", .{node});
+    if (opts.input_schema) {
+        var parsed = try json.parseFromTokenSource(Node, alloc, &jr, .{});
+        // try std.json.stringify(parsed.value, .{}, std.io.getStdErr().writer());
+        defer parsed.deinit();
+        var node = parsed.value;
+        // TODO does an input schema need to be checked?
+        // try node.check(parsed.value);
+        if (opts.dump_schema) {
+            try writer.print("{}\n", .{node});
+        } else {
+            try node.render(writer, opts);
+        }
     } else {
-        try node.render(writer, opts);
+        var node: Node = .{};
+        defer node.deinit(alloc);
+        const parsed = try json.parseFromTokenSource(json.Value, alloc, &jr, .{});
+        // try std.json.stringify(parsed.value, .{}, std.io.getStdErr().writer());
+        defer parsed.deinit();
+        try node.build(alloc, parsed.value);
+        try node.check(parsed.value);
+        if (opts.dump_schema) {
+            try writer.print("{}\n", .{node});
+        } else {
+            try node.render(writer, opts);
+        }
     }
 }
 

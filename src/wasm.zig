@@ -36,6 +36,7 @@ pub export fn parseBuildRender(
     input_len: usize,
     debug_json: bool,
     dump_schema: bool,
+    input_schema: bool, // TODO wire up in js
     include_test: bool,
 ) ?[*:0]u8 {
     log.info("pbr() input len {} debug_json {} dump_schema {} include_test {}", .{ input_len, debug_json, dump_schema, include_test });
@@ -45,6 +46,7 @@ pub export fn parseBuildRender(
     const opts = Options{
         .debug_json = debug_json,
         .dump_schema = dump_schema,
+        .input_schema = input_schema,
         .include_test = include_test,
     };
     var fbsin = std.io.fixedBufferStream(input[0..input_len]);
