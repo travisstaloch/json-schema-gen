@@ -104,7 +104,7 @@ pub fn build(b: *std.Build) !void {
     const wasm = b.addExecutable(.{
         .name = "lib",
         .root_source_file = b.path("src/wasm.zig"),
-        .target = b.resolveTargetQuery(std.zig.CrossTarget.parse(
+        .target = b.resolveTargetQuery(std.Target.Query.parse(
             .{ .arch_os_abi = "wasm32-freestanding" },
         ) catch unreachable),
         .optimize = optimize,
