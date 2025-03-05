@@ -1,6 +1,6 @@
 # json-schema-gen
 
-Generate zig code from arbitrary json data which can parse it.
+Input arbitrary json. Output zig code which can parse the json. 
 
 ## Web
 
